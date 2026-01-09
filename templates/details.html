@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ trip }} | Wanderer Expeditions</title>
+    <title>{{ trip.name }} | Wanderer Expeditions</title>
     <style>
         :root {
             --primary: #F56A6A;
@@ -11,13 +11,16 @@
             --light: #ffffff;
             --grey: #f8f8f8;
             --border: #eeeeee;
+            --bg-body: #f8f8f8;
+            --text-main: #1a1a1a;
         }
 
-        body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: var(--grey); color: var(--dark); line-height: 1.6; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: var(--bg-body); color: var(--text-main); line-height: 1.6; }
 
         /* --- NAVIGATION --- */
         nav { padding: 20px 5%; background: white; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,0.05); position: sticky; top: 0; z-index: 100; }
         .back-btn { text-decoration: none; color: var(--dark); font-weight: 700; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
+        .logo img { height: 40px; }
 
         /* --- LAYOUT --- */
         .container { max-width: 1200px; margin: 40px auto; padding: 0 20px; display: grid; grid-template-columns: 1fr 380px; gap: 50px; }
@@ -28,7 +31,7 @@
 
         .day-card {
             display: flex; background: white; border-radius: 24px; overflow: hidden;
-            margin-bottom: 30px; box-shadow: 0 4px 15px rgba(0,0,0,0.03);
+            margin-bottom: 30px; box-shadow: 0 4px 15px rgba(0,0,0,0.05);
             border: 1px solid var(--border); transition: 0.3s;
         }
         .day-card:hover { transform: translateY(-5px); box-shadow: 0 10px 30px rgba(0,0,0,0.08); }
@@ -38,7 +41,7 @@
         .day-number { position: absolute; top: 20px; left: 20px; background: var(--primary); color: white; padding: 5px 15px; border-radius: 50px; font-weight: 800; font-size: 14px; }
         
         .day-content { width: 60%; padding: 40px; box-sizing: border-box; }
-        .day-content h3 { margin-top: 0; font-size: 22px; color: var(--dark); }
+        .day-content h3 { margin-top: 0; font-size: 22px; color: var(--text-main); }
 
         /* --- MODERN BOOKING SIDEBAR --- */
         .booking-sidebar {
@@ -48,7 +51,7 @@
         }
 
         .booking-sidebar h3 {
-            color: var(--dark); margin-top: 0; font-size: 26px; font-weight: 800;
+            color: var(--text-main); margin-top: 0; font-size: 26px; font-weight: 800;
             border-left: 5px solid var(--primary); padding-left: 15px; margin-bottom: 10px;
         }
 
@@ -72,27 +75,100 @@
         .footer-note { font-size: 12px; text-align: center; color: #bbb; margin-top: 20px; display: flex; align-items: center; justify-content: center; gap: 5px; }
 
         @media (max-width: 900px) {
-            .container { grid-template-columns: 1fr; }
+            .container { grid-template-columns: 1fr; padding: 0 15px; margin-top: 20px; }
             .day-card { flex-direction: column; }
             .day-image, .day-content { width: 100%; }
+            .day-image { min-height: 200px; }
+            .day-content { padding: 25px; }
             .booking-sidebar { position: static; }
+            .itinerary-header h1 { font-size: 32px; }
         }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-body: #121212;
+                --text-main: #f0f0f0;
+                --border: #333;
+                --grey: #1e1e1e;
+            }
+            nav, .day-card, .booking-sidebar { background: #1e1e1e; }
+            .back-btn { color: #f0f0f0; }
+            .itinerary-header p { color: #aaa; }
+            .form-group input { 
+                background: #2d2d2d; 
+                border-color: #333; 
+                color: white; 
+            }
+            .form-group input:focus {
+                background: #333;
+                border-color: var(--primary);
+            }
+        }
+        
+        /* --- REVIEWS --- */
+        .reviews-section { margin-top: 60px; border-top: 1px solid var(--border); padding-top: 40px; }
+        .review-card { background: white; padding: 25px; border-radius: 20px; margin-bottom: 20px; border: 1px solid var(--border); }
+        .review-header { display: flex; align-items: center; gap: 15px; margin-bottom: 15px; }
+        .review-avatar { width: 45px; height: 45px; border-radius: 50%; background: #eee; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #555; overflow: hidden; font-size: 18px; }
+        .review-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .review-author h4 { margin: 0; font-size: 16px; color: var(--text-main); }
+        .review-date { font-size: 12px; color: #999; }
+        .star-rating { color: #f1c40f; font-size: 14px; margin-top: 2px; }
+        .review-text { color: #666; font-size: 15px; line-height: 1.6; margin: 0; }
+        .verified-badge { display: inline-flex; align-items: center; gap: 3px; background: #e8f5e9; color: #27ae60; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-left: 8px; border: 1px solid #c8e6c9; text-transform: uppercase; letter-spacing: 0.5px; }
+        
+        .rating-input { display: flex; flex-direction: row-reverse; justify-content: flex-end; gap: 5px; margin-bottom: 15px; }
+        .rating-input input { display: none; }
+        .rating-input label { cursor: pointer; font-size: 24px; color: #ddd; transition: 0.2s; }
+        .rating-input input:checked ~ label, .rating-input label:hover, .rating-input label:hover ~ label { color: #f1c40f; }
+        
+        /* --- PAGINATION --- */
+        .pagination { display: flex; justify-content: center; gap: 15px; margin-top: 30px; align-items: center; }
+        .page-btn { padding: 8px 16px; background: white; border: 1px solid #ddd; border-radius: 8px; text-decoration: none; color: var(--text-main); font-size: 14px; transition: 0.3s; }
+        .page-btn:hover { border-color: var(--primary); color: var(--primary); }
+        .page-info { font-size: 14px; color: #888; }
     </style>
 </head>
 <body>
 
     <nav>
         <a href="/" class="back-btn">← Back to Explorer</a>
-        <div class="logo"><strong>WANDERER</strong></div>
+        <div class="logo"><img src="/static/wp-content/uploads/2021/01/966b96df-logo.png" alt="Wanderer"></div>
     </nav>
 
     <div class="container">
         <div class="itinerary-section">
             <div class="itinerary-header">
-                <h1>{{ trip }}</h1>
+                <h1>{{ trip.name }}</h1>
                 <p>A 6-Day journey curated for the soulful traveler.</p>
+                {% if review_count > 0 %}
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px; color: #f1c40f; font-weight: bold;">
+                    <span style="font-size: 20px;">★</span> {{ avg_rating }} <span style="color: #999; font-weight: normal; font-size: 14px;">({{ review_count }} Reviews)</span>
+                </div>
+                {% endif %}
+                {% if trip.image %}
+                <img src="/static/wp-content/uploads/2021/01/{{ trip.image }}" alt="{{ trip.name }}" style="width:100%; height:350px; object-fit:cover; border-radius:20px; margin-bottom:30px; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
+                {% endif %}
             </div>
 
+            {% if trip.itinerary %}
+                <!-- Dynamic Itinerary from Admin Panel -->
+                {% for day in trip.itinerary %}
+                <div class="day-card">
+                    <div class="day-image">
+                        <span class="day-number">DAY {{ loop.index }}</span>
+                        {% if day.image %}
+                        <img src="/static/wp-content/uploads/2021/01/{{ day.image }}" alt="{{ day.title }}">
+                        {% endif %}
+                    </div>
+                    <div class="day-content">
+                        <h3>{{ day.title }}</h3>
+                        <p>{{ day.description }}</p>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+            <!-- Fallback for trips without custom itinerary -->
             {% for i in range(1, 7) %}
             <div class="day-card">
                 <div class="day-image">
@@ -105,14 +181,96 @@
                 </div>
             </div>
             {% endfor %}
+            {% endif %}
+            
+            <!-- REVIEWS SECTION -->
+            <div class="reviews-section" id="reviews-section">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+                    <h2 style="margin: 0; color: var(--text-main);">Traveler Reviews</h2>
+                    <form action="" method="GET" id="sortForm">
+                        <select name="sort" onchange="document.getElementById('sortForm').submit()" style="padding: 8px 12px; border-radius: 8px; border: 1px solid #ddd; font-family: inherit; color: #555; cursor: pointer; outline: none;">
+                            <option value="newest" {% if sort_option == 'newest' %}selected{% endif %}>Newest First</option>
+                            <option value="oldest" {% if sort_option == 'oldest' %}selected{% endif %}>Oldest First</option>
+                            <option value="highest" {% if sort_option == 'highest' %}selected{% endif %}>Highest Rated</option>
+                            <option value="lowest" {% if sort_option == 'lowest' %}selected{% endif %}>Lowest Rated</option>
+                        </select>
+                    </form>
+                </div>
+                
+                {% if session.get('user') %}
+                <div class="review-card" style="background: var(--bg-body);">
+                    <h4 style="margin-top: 0;">Write a Review</h4>
+                    <form action="/submit-review" method="POST">
+                        <input type="hidden" name="trip_name" value="{{ trip.name }}">
+                        <div class="rating-input">
+                            <input type="radio" id="star5" name="rating" value="5"><label for="star5">★</label>
+                            <input type="radio" id="star4" name="rating" value="4"><label for="star4">★</label>
+                            <input type="radio" id="star3" name="rating" value="3"><label for="star3">★</label>
+                            <input type="radio" id="star2" name="rating" value="2"><label for="star2">★</label>
+                            <input type="radio" id="star1" name="rating" value="1"><label for="star1">★</label>
+                        </div>
+                        <textarea name="comment" rows="3" placeholder="Share your experience..." style="width: 100%; padding: 15px; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 10px; font-family: inherit; box-sizing: border-box;" required></textarea>
+                        <button type="submit" style="background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold;">Submit Review</button>
+                    </form>
+                </div>
+                {% endif %}
+
+                {% if reviews %}
+                    {% for review in reviews %}
+                    <div class="review-card">
+                        <div class="review-header">
+                            <div class="review-avatar">
+                                {% if review.user_avatar %}
+                                <img src="/static/wp-content/uploads/2021/01/{{ review.user_avatar }}" alt="User">
+                                {% else %}
+                                {{ review.user_name[0] }}
+                                {% endif %}
+                            </div>
+                            <div class="review-author">
+                                <div style="display: flex; align-items: center;">
+                                    <h4 style="margin: 0;">{{ review.user_name }}</h4>
+                                    {% if review.get('verified') %}
+                                    <span class="verified-badge" title="Verified Purchase">✓ Verified</span>
+                                    {% endif %}
+                                </div>
+                                <div class="star-rating">
+                                    {% for i in range(review.rating) %}★{% endfor %}
+                                </div>
+                            </div>
+                            <div style="margin-left: auto; text-align: right;">
+                                <span class="review-date">{{ review.date }}</span>
+                            </div>
+                        </div>
+                        <p class="review-text">{{ review.comment }}</p>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p style="color: #888; font-style: italic;">No reviews yet. Be the first to share your experience!</p>
+                {% endif %}
+
+                <!-- Pagination Controls -->
+                {% if total_pages > 1 %}
+                <div class="pagination">
+                    {% if page > 1 %}
+                    <a href="{{ url_for('trip_details', trip_name=trip.name.lower().replace(' ', '-'), page=page-1, sort=sort_option) }}#reviews-section" class="page-btn">← Previous</a>
+                    {% endif %}
+                    
+                    <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
+                    
+                    {% if page < total_pages %}
+                    <a href="{{ url_for('trip_details', trip_name=trip.name.lower().replace(' ', '-'), page=page+1, sort=sort_option) }}#reviews-section" class="page-btn">Next →</a>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
         </div>
 
         <div class="booking-sidebar">
             <h3>Start Adventure</h3>
-            <p>Ready to join the <strong>{{ trip }}</strong> tribe? Secure your reservation below.</p>
+            <p>Ready to join the <strong>{{ trip.name }}</strong> tribe? Secure your reservation below.</p>
             
             <form action="/book" method="POST" id="bookingForm">
-                <input type="hidden" name="destination" value="{{ trip }}">
+                <input type="hidden" name="destination" value="{{ trip.name }}">
 
                 <div class="form-group">
                     <label>Full Name</label>
@@ -125,8 +283,8 @@
                 </div>
 
                 <div class="form-group">
-                    <label>Travel Month</label>
-                    <input type="month" name="travel_month">
+                    <label>Preferred Travel Date</label>
+                    <input type="date" name="travel_date">
                 </div>
 
                 <button type="submit" class="submit-btn" id="subBtn">Secure Booking</button>

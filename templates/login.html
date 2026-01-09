@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login / Sign Up | Wanderer</title>
+    <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f4f7f6; }
+        .login-card { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); text-align: center; width: 350px; position: relative; overflow: hidden; }
+        
+        .toggle-btns { display: flex; margin-bottom: 30px; background: #f0f0f0; border-radius: 30px; padding: 5px; position: relative; }
+        .toggle-btn { flex: 1; padding: 10px; border: none; background: transparent; cursor: pointer; font-weight: bold; color: #888; z-index: 2; transition: 0.3s; border-radius: 25px; }
+        .toggle-btn.active { color: white; }
+        .slider { position: absolute; top: 5px; left: 5px; width: 50%; height: calc(100% - 10px); background: #F56A6A; border-radius: 25px; transition: 0.3s; z-index: 1; }
+        
+        .form-container { display: none; animation: fade 0.3s; }
+        .form-container.active { display: block; }
+        
+        input { padding: 12px 15px; border: 1px solid #ddd; border-radius: 8px; width: 100%; margin-bottom: 15px; display: block; box-sizing: border-box; font-size: 14px; }
+        button { background: #F56A6A; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; font-size: 16px; margin-top: 10px; }
+        button:hover { background: #1a1a1a; }
+        
+        .alert { color: red; font-size: 14px; margin-bottom: 10px; }
+        h2 { margin-top: 0; color: #333; }
+        
+        @keyframes fade { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        @media (max-width: 480px) {
+            .login-card { width: 85%; padding: 30px 20px; }
+        }
+        @media (prefers-color-scheme: dark) {
+            body { background: #121212; }
+            .login-card { background: #1e1e1e; color: #f0f0f0; box-shadow: none; border: 1px solid #333; }
+            input { background: #2d2d2d; border: 1px solid #333; color: white; }
+            .toggle-btns { background: #2d2d2d; }
+            h2 { color: #f0f0f0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="toggle-btns">
+            <div class="slider" id="slider"></div>
+            <button class="toggle-btn active" onclick="showLogin()">Login</button>
+            <button class="toggle-btn" onclick="showSignup()">Sign Up</button>
+        </div>
+        
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Login Form -->
+        <div id="loginForm" class="form-container active">
+            <h2>Welcome Back</h2>
+            <form method="POST" action="/login">
+                <input type="text" name="email" placeholder="Email Address" required>
+                <input type="password" name="password" placeholder="Password" required>
+                <button type="submit">Sign In</button>
+            </form>
+        </div>
+
+        <!-- Signup Form -->
+        <div id="signupForm" class="form-container">
+            <h2>Join the Tribe</h2>
+            <form method="POST" action="/signup">
+                <input type="text" name="name" placeholder="Full Name" required>
+                <input type="email" name="email" placeholder="Email Address" required>
+                <input type="password" name="password" placeholder="Create Password" required>
+                <button type="submit">Create Account</button>
+            </form>
+        </div>
+
+        <a href="/" style="display:block; margin-top:15px; color:#999; text-decoration:none; font-size:12px;">← Back to Site</a>
+    </div>
+
+    <script>
+        function showSignup() {
+            document.getElementById('slider').style.left = '50%';
+            document.getElementById('loginForm').classList.remove('active');
+            document.getElementById('signupForm').classList.add('active');
+            document.querySelectorAll('.toggle-btn')[0].classList.remove('active');
+            document.querySelectorAll('.toggle-btn')[1].classList.add('active');
+        }
+        function showLogin() {
+            document.getElementById('slider').style.left = '5px';
+            document.getElementById('signupForm').classList.remove('active');
+            document.getElementById('loginForm').classList.add('active');
+            document.querySelectorAll('.toggle-btn')[1].classList.remove('active');
+            document.querySelectorAll('.toggle-btn')[0].classList.add('active');
+        }
+    </script>
+</body>
+</html>

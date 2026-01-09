@@ -1,32 +1,56 @@
 import os
 import datetime
+import time
 import certifi
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, session, flash
 from flask_mail import Mail, Message
+from werkzeug.security import generate_password_hash, check_password_hash
 from pymongo import MongoClient
 from bson.objectid import ObjectId
+from itsdangerous import URLSafeTimedSerializer
+from werkzeug.utils import secure_filename
+from dotenv import load_dotenv
+import razorpay
+from authlib.integrations.flask_client import OAuth
+
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'), override=True)
 
 app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY')
 
-# --- 1. SECURITY & CONFIGURATION ---
-# Uses environment variables when live, defaults to a local key for testing
-app.secret_key = os.environ.get('SECRET_KEY', 'dhou_wanderer_key_2025')
+# --- 1. FOLDER PERMISSIONS & CONFIGURATION ---
+# This path matches the subfolders you requested
+UPLOAD_FOLDER = 'static/wp-content/uploads/2021/01/'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+# Apply Folder Permissions: Automatically creates the directory path if it doesn't exist
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # --- 2. MONGODB ATLAS CONNECTION ---
-# The 'ca' variable points to a bundle of trusted security certificates
 ca = certifi.where()
+MONGO_URI = os.environ.get('MONGO_URI') # Ensure this is set in your environment variables
 
-# Use your specific connection string
-DEFAULT_URI = "mongodb+srv://dhouwanderer_db_user:bXLzzf90peXqPAVv@dhouwanderer0.6jbswlp.mongodb.net/dhou-wanderer?retryWrites=true&w=majority&appName=dhouwanderer0"
-MONGO_URI = os.environ.get('MONGO_URI', DEFAULT_URI)
+# Initialize collections to None to prevent NameError if connection fails
+bookings_collection = None
+trips_collection = None
+users_collection = None
+reviews_collection = None
 
 try:
-    # We add 'tlsCAFile=ca' here to fix the SSL Handshake error you encountered
+    if not MONGO_URI or "your_mongo_string" in MONGO_URI:
+        raise ValueError("Invalid MONGO_URI detected. Please check your .env file.")
+
     client = MongoClient(MONGO_URI, tlsCAFile=ca)
-    # Ping the database to confirm the connection is active
-    client.admin.command('ping')
+    client.admin.command('ping') # Force connection check
     db = client['dhou-wanderer']
     bookings_collection = db['bookings']
+    trips_collection = db['trips'] 
+    users_collection = db['users']
+    reviews_collection = db['reviews']
     print("✅ Successfully connected to MongoDB Atlas!")
 except Exception as e:
     print(f"❌ MongoDB Connection Error: {e}")
@@ -37,95 +61,536 @@ app.config.update(
     MAIL_PORT=587,
     MAIL_USE_TLS=True,
     MAIL_USERNAME='dhouwanderer@gmail.com',
-    # Replace 'MAIL_PASS' in your hosting dashboard with your Gmail App Password
-    MAIL_PASSWORD=os.environ.get('MAIL_PASS', 'wemm vgfm hmsv ycij'),
+    MAIL_PASSWORD=os.environ.get('MAIL_PASS'),
     MAIL_DEFAULT_SENDER=('Wanderer Travels', 'dhouwanderer@gmail.com')
 )
 mail = Mail(app)
+
+# --- RAZORPAY CONFIGURATION ---
+razorpay_client = razorpay.Client(auth=(os.environ.get('RAZORPAY_KEY_ID'), os.environ.get('RAZORPAY_KEY_SECRET')))
+
+# --- GOOGLE OAUTH CONFIGURATION ---
+oauth = OAuth(app)
+oauth.register(
+    name='google',
+    access_token_url='https://oauth2.googleapis.com/token',
+    authorize_url='https://accounts.google.com/o/oauth2/auth',
+    api_base_url='https://www.googleapis.com/oauth2/v1/',
+    jwks_uri='https://www.googleapis.com/oauth2/v3/certs',
+    client_kwargs={'scope': 'openid email profile'},
+    client_id=os.environ.get('GOOGLE_CLIENT_ID'),
+    client_secret=os.environ.get('GOOGLE_CLIENT_SECRET')
+)
 
 # --- 4. WEBSITE ROUTES ---
 
 @app.route('/')
 def home():
-    """Main Landing Page"""
-    return render_template('index.html')
+    if trips_collection is None: return "Database Connection Error", 500
+    
+    # Search Logic
+    search_query = request.args.get('q')
+    query = {"name": {"$regex": search_query, "$options": "i"}} if search_query else {}
+    
+    all_trips = list(trips_collection.find(query))
+    return render_template('index.html', trips=all_trips, search_query=search_query)
 
 @app.route('/itinerary/<trip_name>')
 def trip_details(trip_name):
-    """Individual Trip Detail Pages"""
-    formatted_name = trip_name.replace('-', ' ').title()
-    return render_template('details.html', trip=formatted_name)
+    if trips_collection is None: return "Database Connection Error", 500
+    
+    db_trip_name = trip_name.replace('-', ' ').title()
+    trip_data = trips_collection.find_one({"name": db_trip_name})
+    
+    if not trip_data:
+        return "Trip not found", 404
+        
+    # Fetch reviews
+    reviews = []
+    avg_rating = 0
+    review_count = 0
+    page = request.args.get('page', 1, type=int)
+    sort_option = request.args.get('sort', 'newest')
+    per_page = 5
+    total_pages = 1
+
+    if reviews_collection is not None:
+        query = {"trip_name": trip_data['name']}
+        review_count = reviews_collection.count_documents(query)
+        
+        if review_count > 0:
+            # Calculate average rating using aggregation
+            pipeline = [{"$match": query}, {"$group": {"_id": None, "avg_rating": {"$avg": "$rating"}}}]
+            agg_result = list(reviews_collection.aggregate(pipeline))
+            if agg_result: avg_rating = agg_result[0]['avg_rating']
+            
+            total_pages = (review_count + per_page - 1) // per_page
+            
+            # Sort Logic
+            sort_criteria = [("date", -1)] # Default: Newest
+            if sort_option == 'oldest':
+                sort_criteria = [("date", 1)]
+            elif sort_option == 'highest':
+                sort_criteria = [("rating", -1)]
+            elif sort_option == 'lowest':
+                sort_criteria = [("rating", 1)]
+
+            reviews = list(reviews_collection.find(query).sort(sort_criteria).skip((page - 1) * per_page).limit(per_page))
+            
+    return render_template('details.html', trip=trip_data, reviews=reviews, avg_rating=round(avg_rating, 1), review_count=review_count, page=page, total_pages=total_pages, sort_option=sort_option)
+
+@app.route('/submit-review', methods=['POST'])
+def submit_review():
+    if not session.get('user'):
+        return redirect(url_for('login'))
+    
+    if reviews_collection is None: return "Database Connection Error", 500
+    
+    trip_name = request.form.get('trip_name')
+    rating = request.form.get('rating')
+    comment = request.form.get('comment')
+    
+    if rating:
+        user = users_collection.find_one({'email': session['user']['email']})
+        avatar = user.get('avatar') if user else None
+        
+        # Check if user has a confirmed booking for this trip
+        is_verified = False
+        if bookings_collection is not None:
+            if bookings_collection.find_one({'email': session['user']['email'], 'trip': trip_name, 'status': 'Confirmed'}):
+                is_verified = True
+        
+        reviews_collection.insert_one({
+            "trip_name": trip_name, "user_name": session['user']['name'], "user_email": session['user']['email'],
+            "user_avatar": avatar, "rating": int(rating), "comment": comment, "date": datetime.datetime.now().strftime("%Y-%m-%d"),
+            "verified": is_verified
+        })
+        flash("Review submitted successfully!")
+        
+    return redirect(url_for('trip_details', trip_name=trip_name.lower().replace(' ', '-')))
 
 @app.route('/book', methods=['POST'])
 def book_trip():
-    """Captures Form Data, Saves to Cloud, and Sends Email"""
+    if bookings_collection is None: return "Database Connection Error", 500
+
     destination = request.form.get('destination', 'Expedition')
     user_name = request.form.get('full_name', 'Traveler')
     user_email = request.form.get('email')
+    travel_date = request.form.get('travel_date')
     
-    # Data to save in MongoDB
     booking_doc = {
-        'name': user_name,
-        'email': user_email,
-        'trip': destination,
-        'status': 'Pending',
-        'date': datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        'name': user_name, 'email': user_email, 'trip': destination,
+        'travel_date': travel_date,
+        'status': 'Pending', 'date': datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        'payment_status': 'Unpaid'
     }
     
+    booking_id = None
     try:
-        # Save to MongoDB Atlas
-        bookings_collection.insert_one(booking_doc)
+        result = bookings_collection.insert_one(booking_doc)
+        booking_id = result.inserted_id
         
-        # Send Automated Confirmation Email
         msg = Message(f"Booking Received: {destination}", recipients=[user_email])
-        msg.html = render_template('emails/booking_confirmation.html', 
-                                   name=user_name, 
-                                   trip=destination)
+        msg.html = render_template('emails/booking_confirmation.html', name=user_name, trip=destination)
+        
         mail.send(msg)
     except Exception as e:
-        print(f"Error during booking process: {e}")
+        print(f"Error: {e}")
 
-    # Redirect to Payment Page
-    return redirect(url_for('payment_page', trip=destination, amount="15000"))
+    return redirect(url_for('payment_page', booking_id=booking_id))
 
 @app.route('/payment')
 def payment_page():
-    """Payment Gateway and QR Code Page"""
-    trip = request.args.get('trip', 'Expedition')
-    amount = request.args.get('amount', '15000')
-    return render_template('payment.html', trip=trip, amount=amount)
+    booking_id = request.args.get('booking_id')
+    if not booking_id: return redirect(url_for('home'))
+    
+    if bookings_collection is None: return "Database Connection Error", 500
+    
+    booking = bookings_collection.find_one({"_id": ObjectId(booking_id)})
+    if not booking: return "Booking not found", 404
+    
+    trip_name = booking.get('trip')
+    trip = trips_collection.find_one({"name": trip_name})
+    price = int(trip.get('price', 0)) if trip else 0
+    
+    # Create Razorpay Order
+    amount_paise = price * 100
+    order_data = {
+        "amount": amount_paise,
+        "currency": "INR",
+        "receipt": str(booking_id),
+        "notes": {"trip": trip_name, "email": booking.get('email')}
+    }
+    
+    try:
+        order = razorpay_client.order.create(data=order_data)
+        bookings_collection.update_one({"_id": ObjectId(booking_id)}, {"$set": {"razorpay_order_id": order['id']}})
+    except Exception as e:
+        return f"Error creating payment order: {e}", 500
 
-# --- 5. ADMIN DASHBOARD ---
+    return render_template('payment.html', 
+                           trip=trip_name, 
+                           amount=price, 
+                           order=order,
+                           key_id=os.environ.get('RAZORPAY_KEY_ID'),
+                           user_email=booking.get('email'),
+                           user_name=booking.get('name'))
+
+@app.route('/payment/verify', methods=['POST'])
+def payment_verify():
+    # Get payment details from form
+    payment_id = request.form.get('razorpay_payment_id')
+    order_id = request.form.get('razorpay_order_id')
+    signature = request.form.get('razorpay_signature')
+    
+    params_dict = {
+        'razorpay_order_id': order_id,
+        'razorpay_payment_id': payment_id,
+        'razorpay_signature': signature
+    }
+    
+    try:
+        # Verify signature
+        razorpay_client.utility.verify_payment_signature(params_dict)
+        
+        if bookings_collection:
+            booking = bookings_collection.find_one({'razorpay_order_id': order_id})
+            if booking:
+                bookings_collection.update_one({'_id': booking['_id']}, {'$set': {'payment_status': 'Paid'}})
+                
+                # Send Receipt Email
+                try:
+                    msg = Message(f"Payment Receipt: {booking['trip']}", recipients=[booking['email']])
+                    msg.html = render_template('emails/payment_receipt.html', name=booking['name'], trip=booking['trip'], payment_id=payment_id, date=datetime.datetime.now().strftime("%d %b, %Y"))
+                    mail.send(msg)
+                except Exception as e:
+                    print(f"Error sending receipt email: {e}")
+
+        return render_template('index.html', trips=list(trips_collection.find())) # Redirect to home or success page
+    except razorpay.errors.SignatureVerificationError:
+        return "Payment Verification Failed", 400
+
+# --- 5. ADMIN CMS ROUTES ---
+
+@app.route('/signup', methods=['POST'])
+def signup():
+    if users_collection is None: return "Database Connection Error", 500
+    
+    name = request.form.get('name')
+    email = request.form.get('email')
+    phone = request.form.get('phone')
+    password = request.form.get('password')
+    
+    # Check if user exists with this email OR phone
+    query_parts = []
+    if email: query_parts.append({'email': email})
+    if phone: query_parts.append({'phone': phone})
+    
+    if query_parts and users_collection.find_one({'$or': query_parts}):
+        flash("Account with this Email or Phone already exists!")
+        return redirect(url_for('login'))
+        
+    users_collection.insert_one({
+        'name': name,
+        'email': email,
+        'phone': phone,
+        'password': generate_password_hash(password)
+    })
+    
+    session['user'] = {'name': name, 'email': email}
+    return redirect(url_for('home'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        login_id = request.form.get('login_id')
+        password = request.form.get('password')
+        
+        # User Check
+        if users_collection is not None:
+            # Check if login_id matches email OR phone
+            user = users_collection.find_one({'$or': [{'email': login_id}, {'phone': login_id}]})
+            if user and check_password_hash(user['password'], password):
+                session['user'] = {'name': user['name'], 'email': user.get('email'), 'phone': user.get('phone')}
+                return redirect(url_for('home'))
+        
+        flash("Invalid Credentials")
+            
+    return render_template('login.html')
+
+@app.route('/google-login')
+def google_login():
+    redirect_uri = url_for('google_callback', _external=True)
+    return oauth.google.authorize_redirect(redirect_uri)
+
+@app.route('/google-callback')
+def google_callback():
+    token = None
+    # Retry mechanism for unstable networks
+    for attempt in range(3):
+        try:
+            token = oauth.google.authorize_access_token()
+            if token:
+                break
+        except Exception as e:
+            print(f"Google Login Connection Error (Attempt {attempt+1}/3): {e}")
+            if attempt < 2:
+                time.sleep(1)
+
+    if not token:
+        flash("Google Login Failed. Please check your connection and try again.")
+        return redirect(url_for('login'))
+
+    try:
+        user_info = token.get('userinfo')
+        
+        if user_info:
+            email = user_info.get('email')
+            name = user_info.get('name')
+            
+            if users_collection is not None:
+                user = users_collection.find_one({'email': email})
+                if not user:
+                    # Create new user if they don't exist
+                    users_collection.insert_one({'name': name, 'email': email, 'phone': None, 'password': None})
+                
+                session['user'] = {'name': name, 'email': email}
+                return redirect(url_for('home'))
+                
+    except Exception as e:
+        print(f"Google Login Error: {e}")
+        
+    flash("Google Login Failed. Unable to fetch user info.")
+    return redirect(url_for('login'))
+
+@app.route('/admin-login', methods=['GET', 'POST'])
+def admin_login():
+    if request.method == 'POST':
+        password = request.form.get('password')
+        # Securely check against Environment Variable (Owner controlled)
+        if password == os.environ.get('ADMIN_PASSWORD'):
+            session['admin_logged_in'] = True
+            return redirect(url_for('admin_page'))
+        flash("Invalid Admin Password")
+    return render_template('admin_login.html')
+
+@app.route('/change-password', methods=['GET', 'POST'])
+def change_password():
+    if not session.get('user'):
+        return redirect(url_for('login'))
+        
+    if request.method == 'POST':
+        new_password = request.form.get('new_password')
+        email = session['user']['email']
+        
+        if users_collection is not None:
+            users_collection.update_one({'email': email}, {'$set': {'password': generate_password_hash(new_password)}})
+            flash("Password updated successfully!")
+            return redirect(url_for('home'))
+            
+    return render_template('change_password.html')
+
+@app.route('/profile', methods=['GET', 'POST'])
+def profile():
+    if not session.get('user'):
+        return redirect(url_for('login'))
+    
+    if bookings_collection is None or users_collection is None: return "Database Connection Error", 500
+    
+    user_email = session['user']['email']
+    
+    # Handle Avatar Upload
+    if request.method == 'POST':
+        file = request.files.get('avatar')
+        if file and allowed_file(file.filename):
+            filename = secure_filename(f"user_{session['user']['name']}_{file.filename}")
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            users_collection.update_one({'email': user_email}, {'$set': {'avatar': filename}})
+            flash("Profile picture updated!")
+            return redirect(url_for('profile'))
+
+    # Fetch fresh user data (for avatar) and bookings
+    user_data = users_collection.find_one({'email': user_email})
+    user_bookings = list(bookings_collection.find({'email': user_email}).sort('date', -1))
+    
+    return render_template('profile.html', bookings=user_bookings, user=user_data)
+
+@app.route('/cancel-booking/<booking_id>')
+def cancel_booking(booking_id):
+    if not session.get('user'):
+        return redirect(url_for('login'))
+    
+    if bookings_collection is None: return "Database Connection Error", 500
+    
+    user_email = session['user']['email']
+    # Verify booking belongs to user before cancelling
+    if bookings_collection.find_one({'_id': ObjectId(booking_id), 'email': user_email}):
+        bookings_collection.update_one({'_id': ObjectId(booking_id)}, {'$set': {'status': 'Cancelled'}})
+        flash("Booking cancelled successfully.")
+    
+    return redirect(url_for('profile'))
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'POST':
+        email = request.form.get('email')
+        if users_collection is not None:
+            user = users_collection.find_one({'email': email})
+            if user:
+                s = URLSafeTimedSerializer(app.secret_key)
+                token = s.dumps(email, salt='password-reset-salt')
+                link = url_for('reset_password', token=token, _external=True)
+                
+                msg = Message("Password Reset Request", recipients=[email])
+                msg.html = render_template('emails/reset_password.html', link=link, name=user['name'])
+                mail.send(msg)
+        
+        flash("If an account exists with that email, a reset link has been sent.")
+        return redirect(url_for('login'))
+    return render_template('forgot_password.html')
+
+@app.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    s = URLSafeTimedSerializer(app.secret_key)
+    try:
+        email = s.loads(token, salt='password-reset-salt', max_age=3600)
+    except:
+        flash("The password reset link is invalid or has expired.")
+        return redirect(url_for('login'))
+    
+    if request.method == 'POST':
+        password = request.form.get('password')
+        if users_collection is not None:
+            users_collection.update_one({'email': email}, {'$set': {'password': generate_password_hash(password)}})
+            flash("Your password has been updated! Please login.")
+            return redirect(url_for('login'))
+            
+    return render_template('reset_password.html', token=token)
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('home'))
 
 @app.route('/admin-dashboard')
 def admin_page():
-    """Secure Dashboard to View Bookings"""
-    # Access via: yoursite.com/admin-dashboard?pass=wanderer2025
-    password = request.args.get('pass')
-    if password != "wanderer2025":
-        return "Unauthorized Access", 403
+    if not session.get('admin_logged_in'):
+        return redirect(url_for('login'))
     
-    # Fetch all travelers from MongoDB, newest first
+    if bookings_collection is None or trips_collection is None:
+        return "Database Connection Error", 500
+
     all_bookings = list(bookings_collection.find().sort('_id', -1))
+    all_trips = list(trips_collection.find())
     
-    # Calculate Total Revenue from 'Confirmed' bookings only
-    total_revenue = sum(15000 for b in all_bookings if b.get('status') == 'Confirmed')
+    # Dynamic revenue calculation based on actual trip prices
+    # Added safety check: (t.get('price') or 0) ensures we don't crash on empty strings or None
+    trip_prices = {}
+    for t in all_trips:
+        try: trip_prices[t.get('name')] = int(t.get('price') or 0)
+        except ValueError: trip_prices[t.get('name')] = 0
+        
+    total_revenue = sum(trip_prices.get(b.get('trip'), 0) for b in all_bookings if b.get('status') == 'Confirmed')
     
-    return render_template('admin.html', bookings=all_bookings, revenue=total_revenue)
+    return render_template('admin.html', bookings=all_bookings, trips=all_trips, revenue=total_revenue)
+
+@app.route('/admin/add-trip', methods=['POST'])
+def add_new_trip():
+    if not session.get('admin_logged_in'):
+        return redirect(url_for('login'))
+    
+    if trips_collection is None: return "Database Connection Error", 500
+
+    # Applying Form Config: enctype allows 'image_file' to be sent as a file object
+    file = request.files.get('image_file')
+    filename = "default.jpg"
+    
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        # Saves the actual file from the explorer to your folder
+        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+    
+    trip_doc = {
+        "name": request.form.get('name'),
+        "price": request.form.get('price'),
+        "image": filename,
+        "spots": request.form.get('spots')
+    }
+    trips_collection.insert_one(trip_doc)
+    return redirect(url_for('admin_page'))
+
+@app.route('/admin/edit-trip/<trip_id>', methods=['GET', 'POST'])
+def edit_trip(trip_id):
+    if not session.get('admin_logged_in'):
+        return redirect(url_for('login'))
+    
+    if trips_collection is None: return "Database Connection Error", 500
+
+    try:
+        trip = trips_collection.find_one({"_id": ObjectId(trip_id)})
+    except:
+        return "Invalid Trip ID", 400
+
+    if request.method == 'POST':
+        update_data = {
+            "name": request.form.get('name'),
+            "price": request.form.get('price'),
+            "spots": request.form.get('spots')
+        }
+
+        file = request.files.get('image_file')
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            update_data["image"] = filename
+            
+        # --- Itinerary Processing ---
+        itinerary = []
+        # Get list of indices from the hidden inputs to know which days were submitted
+        day_indices = request.form.getlist('day_indices')
+        
+        for index in day_indices:
+            day_title = request.form.get(f'day_title_{index}')
+            day_desc = request.form.get(f'day_desc_{index}')
+            existing_day_img = request.form.get(f'existing_day_img_{index}')
+            
+            day_image_name = existing_day_img
+            
+            # Check if a new image was uploaded for this specific day
+            day_file = request.files.get(f'day_image_{index}')
+            if day_file and allowed_file(day_file.filename):
+                fname = secure_filename(day_file.filename)
+                day_file.save(os.path.join(app.config['UPLOAD_FOLDER'], fname))
+                day_image_name = fname
+            
+            itinerary.append({
+                "title": day_title,
+                "description": day_desc,
+                "image": day_image_name
+            })
+            
+        update_data['itinerary'] = itinerary
+        
+        trips_collection.update_one({"_id": ObjectId(trip_id)}, {"$set": update_data})
+        return redirect(url_for('admin_page'))
+
+    return render_template('edit_trip.html', trip=trip)
+
+@app.route('/admin/delete-trip/<trip_id>')
+def delete_trip(trip_id):
+    if not session.get('admin_logged_in'):
+        return redirect(url_for('login'))
+    if trips_collection is None: return "Database Connection Error", 500
+    trips_collection.delete_one({"_id": ObjectId(trip_id)})
+    return redirect(url_for('admin_page'))
 
 @app.route('/update-status/<booking_id>/<new_status>')
 def update_status(booking_id, new_status):
-    """Updates Payment Status (e.g., Pending -> Confirmed)"""
-    if request.args.get('pass') != "wanderer2025":
-        return "Unauthorized", 403
-        
-    bookings_collection.update_one(
-        {'_id': ObjectId(booking_id)},
-        {'$set': {'status': new_status}}
-    )
-    return redirect(url_for('admin_page', **{'pass': 'wanderer2025'}))
+    if not session.get('admin_logged_in'):
+        return redirect(url_for('login'))
+    if bookings_collection is None: return "Database Connection Error", 500
+    bookings_collection.update_one({'_id': ObjectId(booking_id)}, {'$set': {'status': new_status}})
+    return redirect(url_for('admin_page'))
 
-# --- 6. LAUNCH ---
 if __name__ == '__main__':
-    # Local port 5000; host '0.0.0.0' allows external access
     app.run(debug=True, host='0.0.0.0')

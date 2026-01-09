@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Profile | Wanderer</title>
+    <style>
+        :root {
+            --primary: #F56A6A;
+            --dark: #1a1a1a;
+            --light: #ffffff;
+            --grey: #f8f8f8;
+            --bg-body: #f4f7f6;
+            --text-main: #1a1a1a;
+            --card-bg: #ffffff;
+            --border: #eeeeee;
+        }
+
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: var(--bg-body); color: var(--text-main); }
+        
+        .container { max-width: 1000px; margin: 40px auto; padding: 0 20px; }
+        
+        /* Profile Header */
+        .profile-header { background: var(--card-bg); padding: 40px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); display: flex; align-items: center; gap: 30px; margin-bottom: 40px; border: 1px solid var(--border); }
+        .avatar-wrapper { position: relative; width: 100px; height: 100px; }
+        .avatar-large { width: 100%; height: 100%; background: linear-gradient(135deg, var(--primary), #ff9a9e); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 40px; font-weight: 800; color: white; text-transform: uppercase; overflow: hidden; }
+        .avatar-large img { width: 100%; height: 100%; object-fit: cover; }
+        .upload-icon { position: absolute; bottom: 0; right: 0; background: var(--dark); color: white; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; border: 2px solid white; }
+        .profile-info h1 { margin: 0 0 5px 0; font-size: 28px; }
+        .profile-info p { margin: 0; color: #888; font-size: 16px; }
+        
+        /* Bookings Section */
+        .section-title { font-size: 22px; font-weight: 700; margin-bottom: 20px; border-left: 5px solid var(--primary); padding-left: 15px; }
+        
+        .booking-card { background: var(--card-bg); border-radius: 15px; padding: 25px; margin-bottom: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.03); border: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; transition: 0.3s; }
+        .booking-card:hover { transform: translateY(-3px); box-shadow: 0 10px 25px rgba(0,0,0,0.08); }
+        
+        .booking-details h3 { margin: 0 0 5px 0; font-size: 18px; color: var(--text-main); }
+        .booking-meta { color: #888; font-size: 14px; display: flex; gap: 15px; margin-top: 5px; }
+        .booking-meta span { display: flex; align-items: center; gap: 5px; }
+        
+        .status-badge { padding: 6px 14px; border-radius: 50px; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
+        .status-Pending { background: #fff3cd; color: #856404; }
+        .status-Confirmed { background: #d4edda; color: #155724; }
+        .status-Cancelled { background: #f8d7da; color: #721c24; }
+        
+        .back-btn { display: inline-block; margin-bottom: 20px; text-decoration: none; color: var(--text-main); font-weight: 600; }
+        
+        @media (max-width: 768px) {
+            .profile-header { flex-direction: column; text-align: center; }
+            .booking-card { flex-direction: column; align-items: flex-start; }
+            .status-badge { align-self: flex-start; }
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-body: #121212;
+                --card-bg: #1e1e1e;
+                --text-main: #f0f0f0;
+                --border: #333;
+            }
+            .profile-info p, .booking-meta { color: #aaa; }
+            .back-btn { color: #ccc; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-btn">← Back to Home</a>
+
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                {% for message in messages %}
+                    <div style="background: #fff3cd; color: #856404; padding: 15px; border-radius: 10px; margin-bottom: 20px; border: 1px solid #ffeeba;">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        <div class="profile-header">
+            <div class="avatar-wrapper">
+                <div class="avatar-large">
+                    {% if user.avatar %}
+                        <img src="/static/wp-content/uploads/2021/01/{{ user.avatar }}" alt="Profile">
+                    {% else %}
+                        {{ user.name[0] }}
+                    {% endif %}
+                </div>
+                <form action="/profile" method="POST" enctype="multipart/form-data" id="avatarForm">
+                    <label for="avatarInput" class="upload-icon" title="Change Picture">📷</label>
+                    <input type="file" name="avatar" id="avatarInput" style="display: none;" onchange="document.getElementById('avatarForm').submit()">
+                </form>
+            </div>
+            <div class="profile-info">
+                <h1>{{ user.name }}</h1>
+                <p>{{ user.email }}</p>
+                {% if user.phone %}
+                <p>{{ user.phone }}</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="section-title">My Expeditions</div>
+        
+        {% if bookings %}
+            {% for booking in bookings %}
+            <div class="booking-card">
+                <div class="booking-details">
+                    <h3>{{ booking.trip }}</h3>
+                    <div class="booking-meta">
+                        <span>📅 Travel Date: {{ booking.travel_date }}</span>
+                        <span>🕒 Booked on: {{ booking.date }}</span>
+                    </div>
+                </div>
+                <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 10px;">
+                    <span class="status-badge status-{{ booking.status }}">{{ booking.status }}</span>
+                    {% if booking.status != 'Cancelled' %}
+                        {% if booking.status == 'Confirmed' %}
+                        <a href="/itinerary/{{ booking.trip.lower().replace(' ', '-') }}#reviews-section" style="color: var(--primary); font-size: 12px; font-weight: bold; text-decoration: none; border: 1px solid var(--primary); padding: 4px 10px; border-radius: 6px;">Write Review</a>
+                        {% endif %}
+                    <a href="/cancel-booking/{{ booking._id }}" onclick="return confirm('Are you sure you want to cancel this booking?')" style="color: #e74c3c; font-size: 12px; font-weight: bold; text-decoration: none; border: 1px solid #fadbd8; padding: 4px 10px; border-radius: 6px; background: #fff5f5;">Cancel</a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div style="text-align: center; padding: 40px; color: #888;">
+                <p>You haven't booked any expeditions yet.</p>
+                <a href="/#destinations" style="color: var(--primary); font-weight: bold; text-decoration: none;">Explore Destinations</a>
+            </div>
+        {% endif %}
+    </div>
+</body>
+</html>

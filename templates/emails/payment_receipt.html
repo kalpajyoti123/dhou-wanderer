@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        .wrapper { background-color: #f8f8f8; padding: 40px; font-family: 'Segoe UI', sans-serif; }
+        .content { max-width: 600px; background: #ffffff; margin: 0 auto; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.05); }
+        .header { background: #2ecc71; padding: 30px; text-align: center; color: white; }
+        .body { padding: 40px; color: #333333; line-height: 1.6; }
+        .details { background: #f9f9f9; padding: 20px; border-radius: 10px; margin: 20px 0; }
+        .footer { padding: 20px; text-align: center; font-size: 12px; color: #999999; }
+        h1 { margin: 0; }
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <div class="content">
+            <div class="header">
+                <h1>Payment Successful!</h1>
+            </div>
+            <div class="body">
+                <p>Hi {{ name }},</p>
+                <p>We have received your payment for the <strong>{{ trip }}</strong> expedition. Your spot is now secured!</p>
+                
+                <div class="details">
+                    <p><strong>Transaction ID:</strong> {{ payment_id }}</p>
+                    <p><strong>Date:</strong> {{ date }}</p>
+                    <p><strong>Status:</strong> Paid</p>
+                </div>
+
+                <p>We are excited to have you on board. Our team will be in touch shortly with the detailed itinerary and packing list.</p>
+                <p>Happy Travels,<br>The Wanderer Team</p>
+            </div>
+            <div class="footer">
+                © 2026 Wanderer Travel
+            </div>
+        </div>
+    </div>
+</body>
+</html>
