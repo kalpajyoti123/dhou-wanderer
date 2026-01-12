@@ -1,2 +1,0 @@
-web: gunicorn app:app
-<a href="/update-status/{{ booking._id }}/Confirmed?pass=wanderer2025">✅ Confirm</a>
