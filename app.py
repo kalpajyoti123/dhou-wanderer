@@ -1,4 +1,5 @@
 import os
+import re
 import datetime
 import time
 import certifi
@@ -10,6 +11,7 @@ from bson.objectid import ObjectId
 from itsdangerous import URLSafeTimedSerializer
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
+from werkzeug.middleware.proxy_fix import ProxyFix
 import razorpay
 from authlib.integrations.flask_client import OAuth
 
@@ -18,11 +20,14 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '.env'), override=True)
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY')
 
+# Fix for HTTPS redirects on platforms like Heroku/Render
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
 # --- 1. FOLDER PERMISSIONS & CONFIGURATION ---
 # This path matches the subfolders you requested
 UPLOAD_FOLDER = 'static/wp-content/uploads/2021/01/'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'mp4'}
 
 # Apply Folder Permissions: Automatically creates the directory path if it doesn't exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -41,7 +46,7 @@ users_collection = None
 reviews_collection = None
 
 try:
-    if not MONGO_URI or "your_mongo_string" in MONGO_URI:
+    if not MONGO_URI or "replace_with" in MONGO_URI or "your_mongo_string" in MONGO_URI:
         raise ValueError("Invalid MONGO_URI detected. Please check your .env file.")
 
     client = MongoClient(MONGO_URI, tlsCAFile=ca)
@@ -53,6 +58,9 @@ try:
     reviews_collection = db['reviews']
     print("✅ Successfully connected to MongoDB Atlas!")
 except Exception as e:
+    if "DNS query name does not exist" in str(e):
+        print("\n❌ CONFIG ERROR: The MongoDB address in your .env file is incorrect.")
+        print("   Please copy the full connection string from MongoDB Atlas (Connect -> Drivers).\n")
     print(f"❌ MongoDB Connection Error: {e}")
 
 # --- 3. EMAIL CONFIGURATION ---
@@ -60,9 +68,9 @@ app.config.update(
     MAIL_SERVER='smtp.gmail.com',
     MAIL_PORT=587,
     MAIL_USE_TLS=True,
-    MAIL_USERNAME='dhouwanderer@gmail.com',
+    MAIL_USERNAME=os.environ.get('MAIL_USERNAME'),
     MAIL_PASSWORD=os.environ.get('MAIL_PASS'),
-    MAIL_DEFAULT_SENDER=('Wanderer Travels', 'dhouwanderer@gmail.com')
+    MAIL_DEFAULT_SENDER=('Wanderer Travels', os.environ.get('MAIL_USERNAME'))
 )
 mail = Mail(app)
 
@@ -99,8 +107,9 @@ def home():
 def trip_details(trip_name):
     if trips_collection is None: return "Database Connection Error", 500
     
-    db_trip_name = trip_name.replace('-', ' ').title()
-    trip_data = trips_collection.find_one({"name": db_trip_name})
+    # Use regex for case-insensitive matching (handles 'Bihar', 'bihar', 'Bihar Trip' vs 'bihar-trip')
+    search_name = re.escape(trip_name.replace('-', ' '))
+    trip_data = trips_collection.find_one({"name": {"$regex": f"^{search_name}$", "$options": "i"}})
     
     if not trip_data:
         return "Trip not found", 404
@@ -190,14 +199,18 @@ def book_trip():
         result = bookings_collection.insert_one(booking_doc)
         booking_id = result.inserted_id
         
-        msg = Message(f"Booking Received: {destination}", recipients=[user_email])
-        msg.html = render_template('emails/booking_confirmation.html', name=user_name, trip=destination)
-        
-        mail.send(msg)
+        try:
+            msg = Message(f"Booking Received: {destination}", recipients=[user_email])
+            msg.html = render_template('emails/booking_confirmation.html', name=user_name, trip=destination)
+            mail.send(msg)
+        except Exception as email_error:
+            print(f"Warning: Email sending failed: {email_error}")
+
+        return redirect(url_for('payment_page', booking_id=booking_id))
     except Exception as e:
         print(f"Error: {e}")
-
-    return redirect(url_for('payment_page', booking_id=booking_id))
+        flash("An error occurred while processing your booking. Please try again.")
+        return redirect(url_for('trip_details', trip_name=destination.replace(' ', '-').lower()))
 
 @app.route('/payment')
 def payment_page():
@@ -256,7 +269,8 @@ def payment_verify():
         if bookings_collection:
             booking = bookings_collection.find_one({'razorpay_order_id': order_id})
             if booking:
-                bookings_collection.update_one({'_id': booking['_id']}, {'$set': {'payment_status': 'Paid'}})
+                print(f"✅ Payment Verified. Updating Booking {booking['_id']} to Paid/Confirmed.")
+                bookings_collection.update_one({'_id': booking['_id']}, {'$set': {'payment_status': 'Paid', 'status': 'Confirmed'}})
                 
                 # Send Receipt Email
                 try:
@@ -265,6 +279,8 @@ def payment_verify():
                     mail.send(msg)
                 except Exception as e:
                     print(f"Error sending receipt email: {e}")
+            else:
+                print(f"❌ Error: Booking not found for Order ID {order_id}")
 
         return render_template('index.html', trips=list(trips_collection.find())) # Redirect to home or success page
     except razorpay.errors.SignatureVerificationError:
@@ -373,6 +389,23 @@ def admin_login():
             return redirect(url_for('admin_page'))
         flash("Invalid Admin Password")
     return render_template('admin_login.html')
+
+@app.route('/admin-forgot-password')
+def admin_forgot_password():
+    admin_email = os.environ.get('MAIL_USERNAME')
+    if not admin_email:
+        flash("Admin email is not configured in .env")
+        return redirect(url_for('admin_login'))
+
+    try:
+        msg = Message("Admin Password Reminder", recipients=[admin_email])
+        msg.body = f"Hello,\n\nYour Admin Password is: {os.environ.get('ADMIN_PASSWORD')}\n\nKeep it safe!"
+        mail.send(msg)
+        flash(f"Password reminder sent to {admin_email}")
+    except Exception as e:
+        print(f"Error sending email: {e}")
+        flash("Error sending email. Please check server logs.")
+    return redirect(url_for('admin_login'))
 
 @app.route('/change-password', methods=['GET', 'POST'])
 def change_password():
