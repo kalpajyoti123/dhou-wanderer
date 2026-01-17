@@ -476,11 +476,11 @@
         const span = document.getElementsByClassName("close-modal")[0];
 
         // Show modal on load (delayed)
-        window.onload = function() {
+        window.addEventListener('load', function() {
             setTimeout(function() {
                 modal.style.display = "flex";
             }, 2000); // 2 second delay
-        }
+        });
 
         span.onclick = function() { modal.style.display = "none"; }
         window.onclick = function(event) { if (event.target == modal) { modal.style.display = "none"; } }
