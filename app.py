@@ -13,7 +13,6 @@ from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
 import razorpay
-from authlib.integrations.flask_client import OAuth
 
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'), override=True)
 
@@ -77,19 +76,6 @@ mail = Mail(app)
 # --- RAZORPAY CONFIGURATION ---
 razorpay_client = razorpay.Client(auth=(os.environ.get('RAZORPAY_KEY_ID'), os.environ.get('RAZORPAY_KEY_SECRET')))
 
-# --- GOOGLE OAUTH CONFIGURATION ---
-oauth = OAuth(app)
-oauth.register(
-    name='google',
-    access_token_url='https://oauth2.googleapis.com/token',
-    authorize_url='https://accounts.google.com/o/oauth2/auth',
-    api_base_url='https://www.googleapis.com/oauth2/v1/',
-    jwks_uri='https://www.googleapis.com/oauth2/v3/certs',
-    client_kwargs={'scope': 'openid email profile'},
-    client_id=os.environ.get('GOOGLE_CLIENT_ID'),
-    client_secret=os.environ.get('GOOGLE_CLIENT_SECRET')
-)
-
 # --- 4. WEBSITE ROUTES ---
 
 @app.route('/')
@@ -147,36 +133,6 @@ def trip_details(trip_name):
             reviews = list(reviews_collection.find(query).sort(sort_criteria).skip((page - 1) * per_page).limit(per_page))
             
     return render_template('details.html', trip=trip_data, reviews=reviews, avg_rating=round(avg_rating, 1), review_count=review_count, page=page, total_pages=total_pages, sort_option=sort_option)
-
-@app.route('/submit-review', methods=['POST'])
-def submit_review():
-    if not session.get('user'):
-        return redirect(url_for('login'))
-    
-    if reviews_collection is None: return "Database Connection Error", 500
-    
-    trip_name = request.form.get('trip_name')
-    rating = request.form.get('rating')
-    comment = request.form.get('comment')
-    
-    if rating:
-        user = users_collection.find_one({'email': session['user']['email']})
-        avatar = user.get('avatar') if user else None
-        
-        # Check if user has a confirmed booking for this trip
-        is_verified = False
-        if bookings_collection is not None:
-            if bookings_collection.find_one({'email': session['user']['email'], 'trip': trip_name, 'status': 'Confirmed'}):
-                is_verified = True
-        
-        reviews_collection.insert_one({
-            "trip_name": trip_name, "user_name": session['user']['name'], "user_email": session['user']['email'],
-            "user_avatar": avatar, "rating": int(rating), "comment": comment, "date": datetime.datetime.now().strftime("%Y-%m-%d"),
-            "verified": is_verified
-        })
-        flash("Review submitted successfully!")
-        
-    return redirect(url_for('trip_details', trip_name=trip_name.lower().replace(' ', '-')))
 
 @app.route('/book', methods=['POST'])
 def book_trip():
@@ -288,97 +244,6 @@ def payment_verify():
 
 # --- 5. ADMIN CMS ROUTES ---
 
-@app.route('/signup', methods=['POST'])
-def signup():
-    if users_collection is None: return "Database Connection Error", 500
-    
-    name = request.form.get('name')
-    email = request.form.get('email')
-    phone = request.form.get('phone')
-    password = request.form.get('password')
-    
-    # Check if user exists with this email OR phone
-    query_parts = []
-    if email: query_parts.append({'email': email})
-    if phone: query_parts.append({'phone': phone})
-    
-    if query_parts and users_collection.find_one({'$or': query_parts}):
-        flash("Account with this Email or Phone already exists!")
-        return redirect(url_for('login'))
-        
-    users_collection.insert_one({
-        'name': name,
-        'email': email,
-        'phone': phone,
-        'password': generate_password_hash(password)
-    })
-    
-    session['user'] = {'name': name, 'email': email}
-    return redirect(url_for('home'))
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        login_id = request.form.get('login_id')
-        password = request.form.get('password')
-        
-        # User Check
-        if users_collection is not None:
-            # Check if login_id matches email OR phone
-            user = users_collection.find_one({'$or': [{'email': login_id}, {'phone': login_id}]})
-            if user and check_password_hash(user['password'], password):
-                session['user'] = {'name': user['name'], 'email': user.get('email'), 'phone': user.get('phone')}
-                return redirect(url_for('home'))
-        
-        flash("Invalid Credentials")
-            
-    return render_template('login.html')
-
-@app.route('/google-login')
-def google_login():
-    redirect_uri = url_for('google_callback', _external=True)
-    return oauth.google.authorize_redirect(redirect_uri)
-
-@app.route('/google-callback')
-def google_callback():
-    token = None
-    # Retry mechanism for unstable networks
-    for attempt in range(3):
-        try:
-            token = oauth.google.authorize_access_token()
-            if token:
-                break
-        except Exception as e:
-            print(f"Google Login Connection Error (Attempt {attempt+1}/3): {e}")
-            if attempt < 2:
-                time.sleep(1)
-
-    if not token:
-        flash("Google Login Failed. Please check your connection and try again.")
-        return redirect(url_for('login'))
-
-    try:
-        user_info = token.get('userinfo')
-        
-        if user_info:
-            email = user_info.get('email')
-            name = user_info.get('name')
-            
-            if users_collection is not None:
-                user = users_collection.find_one({'email': email})
-                if not user:
-                    # Create new user if they don't exist
-                    users_collection.insert_one({'name': name, 'email': email, 'phone': None, 'password': None})
-                
-                session['user'] = {'name': name, 'email': email}
-                return redirect(url_for('home'))
-                
-    except Exception as e:
-        print(f"Google Login Error: {e}")
-        
-    flash("Google Login Failed. Unable to fetch user info.")
-    return redirect(url_for('login'))
-
 @app.route('/admin-login', methods=['GET', 'POST'])
 def admin_login():
     if request.method == 'POST':
@@ -406,99 +271,6 @@ def admin_forgot_password():
         print(f"Error sending email: {e}")
         flash("Error sending email. Please check server logs.")
     return redirect(url_for('admin_login'))
-
-@app.route('/change-password', methods=['GET', 'POST'])
-def change_password():
-    if not session.get('user'):
-        return redirect(url_for('login'))
-        
-    if request.method == 'POST':
-        new_password = request.form.get('new_password')
-        email = session['user']['email']
-        
-        if users_collection is not None:
-            users_collection.update_one({'email': email}, {'$set': {'password': generate_password_hash(new_password)}})
-            flash("Password updated successfully!")
-            return redirect(url_for('home'))
-            
-    return render_template('change_password.html')
-
-@app.route('/profile', methods=['GET', 'POST'])
-def profile():
-    if not session.get('user'):
-        return redirect(url_for('login'))
-    
-    if bookings_collection is None or users_collection is None: return "Database Connection Error", 500
-    
-    user_email = session['user']['email']
-    
-    # Handle Avatar Upload
-    if request.method == 'POST':
-        file = request.files.get('avatar')
-        if file and allowed_file(file.filename):
-            filename = secure_filename(f"user_{session['user']['name']}_{file.filename}")
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            users_collection.update_one({'email': user_email}, {'$set': {'avatar': filename}})
-            flash("Profile picture updated!")
-            return redirect(url_for('profile'))
-
-    # Fetch fresh user data (for avatar) and bookings
-    user_data = users_collection.find_one({'email': user_email})
-    user_bookings = list(bookings_collection.find({'email': user_email}).sort('date', -1))
-    
-    return render_template('profile.html', bookings=user_bookings, user=user_data)
-
-@app.route('/cancel-booking/<booking_id>')
-def cancel_booking(booking_id):
-    if not session.get('user'):
-        return redirect(url_for('login'))
-    
-    if bookings_collection is None: return "Database Connection Error", 500
-    
-    user_email = session['user']['email']
-    # Verify booking belongs to user before cancelling
-    if bookings_collection.find_one({'_id': ObjectId(booking_id), 'email': user_email}):
-        bookings_collection.update_one({'_id': ObjectId(booking_id)}, {'$set': {'status': 'Cancelled'}})
-        flash("Booking cancelled successfully.")
-    
-    return redirect(url_for('profile'))
-
-@app.route('/forgot-password', methods=['GET', 'POST'])
-def forgot_password():
-    if request.method == 'POST':
-        email = request.form.get('email')
-        if users_collection is not None:
-            user = users_collection.find_one({'email': email})
-            if user:
-                s = URLSafeTimedSerializer(app.secret_key)
-                token = s.dumps(email, salt='password-reset-salt')
-                link = url_for('reset_password', token=token, _external=True)
-                
-                msg = Message("Password Reset Request", recipients=[email])
-                msg.html = render_template('emails/reset_password.html', link=link, name=user['name'])
-                mail.send(msg)
-        
-        flash("If an account exists with that email, a reset link has been sent.")
-        return redirect(url_for('login'))
-    return render_template('forgot_password.html')
-
-@app.route('/reset-password/<token>', methods=['GET', 'POST'])
-def reset_password(token):
-    s = URLSafeTimedSerializer(app.secret_key)
-    try:
-        email = s.loads(token, salt='password-reset-salt', max_age=3600)
-    except:
-        flash("The password reset link is invalid or has expired.")
-        return redirect(url_for('login'))
-    
-    if request.method == 'POST':
-        password = request.form.get('password')
-        if users_collection is not None:
-            users_collection.update_one({'email': email}, {'$set': {'password': generate_password_hash(password)}})
-            flash("Your password has been updated! Please login.")
-            return redirect(url_for('login'))
-            
-    return render_template('reset_password.html', token=token)
 
 @app.route('/logout')
 def logout():
@@ -626,4 +398,4 @@ def update_status(booking_id, new_status):
     return redirect(url_for('admin_page'))
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0')
+    app.run(debug=False, host='0.0.0.0')
