@@ -18,6 +18,7 @@ A full-stack Flask application for a travel agency, featuring trip bookings, pay
 - **Frontend**: HTML, CSS, JavaScript
 - **Payment Gateway**: Razorpay
 - **Deployment**: Ready for Render/Heroku (Gunicorn)
+- **Storage**: Git LFS for large media files
 
 ## Setup Instructions
 
@@ -26,6 +27,7 @@ A full-stack Flask application for a travel agency, featuring trip bookings, pay
    git clone <repository-url>
    cd dhou--wanderer
    ```
+   *Note: Run `git lfs install` and `git lfs pull` to download large media files.*
 
 2. **Install Dependencies**
    ```bash
@@ -60,3 +62,17 @@ This project includes a `Procfile` and is configured for deployment on platforms
 2. Connect repository to Render/Heroku.
 3. Add environment variables in the dashboard.
 4. Deploy!
+
+## Troubleshooting
+
+### Database Connection Error
+If you see a database connection error after deployment:
+1. **MongoDB Atlas IP Whitelist**: Go to MongoDB Atlas > Network Access > Add IP Address. Select **"Allow Access from Anywhere"** (0.0.0.0/0). Cloud platforms like Render/Heroku use dynamic IPs, so whitelisting a specific IP won't work.
+2. **Environment Variables**: Ensure `MONGO_URI` is correctly set in your cloud provider's dashboard (Settings > Environment Variables).
+3. **SSL Certificate**: If using Python, you might need `certifi` to fix SSL handshake errors.
+   - Install it: `pip install certifi`
+   - Update your connection code:
+     ```python
+     import certifi
+     client = MongoClient(os.getenv('MONGO_URI'), tlsCAFile=certifi.where())
+     ```
