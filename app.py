@@ -86,6 +86,9 @@ cloudinary.config(
     api_secret=os.environ.get('CLOUDINARY_API_SECRET')
 )
 
+if not os.environ.get('CLOUDINARY_API_KEY') or not os.environ.get('CLOUDINARY_API_SECRET'):
+    print("\n❌ CONFIG ERROR: Cloudinary credentials (API KEY or SECRET) are missing.\n   Image uploads will fail. Please check your .env file.\n")
+
 # --- 4. WEBSITE ROUTES ---
 
 @app.route('/')
@@ -318,11 +321,15 @@ def add_new_trip():
 
     # Applying Form Config: enctype allows 'image_file' to be sent as a file object
     file = request.files.get('image_file')
-    filename = "default.jpg"
+    filename = "https://via.placeholder.com/400x300?text=No+Image"
     
     if file and allowed_file(file.filename):
-        upload_result = cloudinary.uploader.upload(file)
-        filename = upload_result['secure_url']
+        try:
+            upload_result = cloudinary.uploader.upload(file)
+            filename = upload_result['secure_url']
+        except Exception as e:
+            flash(f"Error uploading image: {e}")
+            return redirect(url_for('admin_page'))
 
     trip_doc = {
         "name": request.form.get('name'),
@@ -354,8 +361,12 @@ def edit_trip(trip_id):
 
         file = request.files.get('image_file')
         if file and allowed_file(file.filename):
-            upload_result = cloudinary.uploader.upload(file)
-            update_data["image"] = upload_result['secure_url']
+            try:
+                upload_result = cloudinary.uploader.upload(file)
+                update_data["image"] = upload_result['secure_url']
+            except Exception as e:
+                flash(f"Error uploading main image: {e}")
+                return redirect(url_for('edit_trip', trip_id=trip_id))
             
         # --- Itinerary Processing ---
         itinerary = []
@@ -372,8 +383,12 @@ def edit_trip(trip_id):
             # Check if a new image was uploaded for this specific day
             day_file = request.files.get(f'day_image_{index}')
             if day_file and allowed_file(day_file.filename):
-                upload_result = cloudinary.uploader.upload(day_file)
-                day_image_name = upload_result['secure_url']
+                try:
+                    upload_result = cloudinary.uploader.upload(day_file)
+                    day_image_name = upload_result['secure_url']
+                except Exception as e:
+                    flash(f"Error uploading itinerary image: {e}")
+                    return redirect(url_for('edit_trip', trip_id=trip_id))
             
             itinerary.append({
                 "title": day_title,

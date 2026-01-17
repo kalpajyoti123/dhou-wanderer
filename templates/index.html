@@ -261,7 +261,7 @@
             <div class="card reveal-up">
                 <div class="urgency-badge">🔥 ONLY {{ trip.spots }} SPOTS LEFT</div>
                 <div class="img-box">
-                    <img src="{{ trip.image if 'http' in trip.image else '/static/wp-content/uploads/2021/01/' + trip.image }}" alt="{{ trip.name }}">
+                    <img src="{{ trip.image if 'http' in trip.image else '/static/wp-content/uploads/2021/01/' + trip.image }}" onerror="this.src='https://via.placeholder.com/400x300?text=Image+Not+Found'" alt="{{ trip.name }}">
                 </div>
                 <div class="card-body">
                     <h3>{{ trip.name }}</h3>
