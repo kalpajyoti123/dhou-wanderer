@@ -256,9 +256,9 @@
 
     <section class="hero">
         <video autoplay muted loop playsinline class="hero-video" id="heroBg" poster="{{ url_for('static', filename='hero-poster.jpg') }}">
-            <source src="{{ url_for('static', filename='hero.mp4') }}" type="video/mp4">
-            <!-- Fallback: Try uploads folder if not found in root static -->
-            <source src="/static/wp-content/uploads/2021/01/hero.mp4" type="video/mp4">
+            <!-- Vercel has a 50MB limit. Large videos MUST be hosted externally (Cloudinary/S3) -->
+            <!-- Replace the URL below with your actual video URL -->
+            <source src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4" type="video/mp4">
         </video>
         <div class="hero-overlay"></div>
         <div class="hero-content">
