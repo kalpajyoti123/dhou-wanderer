@@ -43,9 +43,10 @@ A full-stack Flask application for a travel agency, featuring trip bookings, pay
    MAIL_PASS=your_app_password
    RAZORPAY_KEY_ID=your_razorpay_key
    RAZORPAY_KEY_SECRET=your_razorpay_secret
-   GOOGLE_CLIENT_ID=your_google_client_id
-   GOOGLE_CLIENT_SECRET=your_google_client_secret
    ADMIN_PASSWORD=your_admin_password
+   CLOUDINARY_CLOUD_NAME=ddqpoqxwq
+   CLOUDINARY_API_KEY=your_api_key
+   CLOUDINARY_API_SECRET=BDzHYOKfXg9Y1ZGDQsdzfBMiL-A
    ```
 
 4. **Run the Application**
