@@ -63,6 +63,14 @@ This project includes a `Procfile` and is configured for deployment on platforms
 3. Add environment variables in the dashboard.
 4. Deploy!
 
+### Vercel Deployment
+1. A `vercel.json` file is included for configuration.
+2. Push your code to GitHub and import the repository into Vercel.
+3. Add your environment variables in the Vercel Dashboard (Settings > Environment Variables).
+
+**⚠️ LFS Warning**: Vercel does not download Git LFS files during deployment. Large videos (like `hero.mp4`) must be hosted externally (e.g., AWS S3, Cloudinary) or they will appear broken.
+**⚠️ Important Limitation**: Vercel uses an ephemeral file system. User uploads (profile pictures, trip images) will **NOT** persist after the request finishes. To support uploads on Vercel, you must update the code to store images in a cloud storage service like AWS S3 or Cloudinary.
+
 ## Troubleshooting
 
 ### Database Connection Error
@@ -76,3 +84,12 @@ If you see a database connection error after deployment:
      import certifi
      client = MongoClient(os.getenv('MONGO_URI'), tlsCAFile=certifi.where())
      ```
+
+### Images Broken (LFS Issue)
+If your images (logo, backgrounds) appear broken on Vercel, they might still be stored as "LFS Pointers" (tiny text files) instead of actual images.
+To fix this, run these commands in your terminal:
+```bash
+git add --renormalize .
+git commit -m "Fix: Convert LFS images back to regular files"
+git push origin main
+```
