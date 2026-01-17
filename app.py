@@ -13,6 +13,9 @@ from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
 import razorpay
+import cloudinary
+import cloudinary.uploader
+import cloudinary.api
 
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'), override=True)
 
@@ -75,6 +78,13 @@ mail = Mail(app)
 
 # --- RAZORPAY CONFIGURATION ---
 razorpay_client = razorpay.Client(auth=(os.environ.get('RAZORPAY_KEY_ID'), os.environ.get('RAZORPAY_KEY_SECRET')))
+
+# --- CLOUDINARY CONFIGURATION ---
+cloudinary.config(
+    cloud_name=os.environ.get('CLOUDINARY_CLOUD_NAME'),
+    api_key=os.environ.get('CLOUDINARY_API_KEY'),
+    api_secret=os.environ.get('CLOUDINARY_API_SECRET')
+)
 
 # --- 4. WEBSITE ROUTES ---
 
@@ -280,7 +290,7 @@ def logout():
 @app.route('/admin-dashboard')
 def admin_page():
     if not session.get('admin_logged_in'):
-        return redirect(url_for('login'))
+        return redirect(url_for('admin_login'))
     
     if bookings_collection is None or trips_collection is None:
         return "Database Connection Error", 500
@@ -302,7 +312,7 @@ def admin_page():
 @app.route('/admin/add-trip', methods=['POST'])
 def add_new_trip():
     if not session.get('admin_logged_in'):
-        return redirect(url_for('login'))
+        return redirect(url_for('admin_login'))
     
     if trips_collection is None: return "Database Connection Error", 500
 
@@ -311,10 +321,9 @@ def add_new_trip():
     filename = "default.jpg"
     
     if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        # Saves the actual file from the explorer to your folder
-        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-    
+        upload_result = cloudinary.uploader.upload(file)
+        filename = upload_result['secure_url']
+
     trip_doc = {
         "name": request.form.get('name'),
         "price": request.form.get('price'),
@@ -327,7 +336,7 @@ def add_new_trip():
 @app.route('/admin/edit-trip/<trip_id>', methods=['GET', 'POST'])
 def edit_trip(trip_id):
     if not session.get('admin_logged_in'):
-        return redirect(url_for('login'))
+        return redirect(url_for('admin_login'))
     
     if trips_collection is None: return "Database Connection Error", 500
 
@@ -345,9 +354,8 @@ def edit_trip(trip_id):
 
         file = request.files.get('image_file')
         if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            update_data["image"] = filename
+            upload_result = cloudinary.uploader.upload(file)
+            update_data["image"] = upload_result['secure_url']
             
         # --- Itinerary Processing ---
         itinerary = []
@@ -364,9 +372,8 @@ def edit_trip(trip_id):
             # Check if a new image was uploaded for this specific day
             day_file = request.files.get(f'day_image_{index}')
             if day_file and allowed_file(day_file.filename):
-                fname = secure_filename(day_file.filename)
-                day_file.save(os.path.join(app.config['UPLOAD_FOLDER'], fname))
-                day_image_name = fname
+                upload_result = cloudinary.uploader.upload(day_file)
+                day_image_name = upload_result['secure_url']
             
             itinerary.append({
                 "title": day_title,
@@ -384,7 +391,7 @@ def edit_trip(trip_id):
 @app.route('/admin/delete-trip/<trip_id>')
 def delete_trip(trip_id):
     if not session.get('admin_logged_in'):
-        return redirect(url_for('login'))
+        return redirect(url_for('admin_login'))
     if trips_collection is None: return "Database Connection Error", 500
     trips_collection.delete_one({"_id": ObjectId(trip_id)})
     return redirect(url_for('admin_page'))
@@ -392,7 +399,7 @@ def delete_trip(trip_id):
 @app.route('/update-status/<booking_id>/<new_status>')
 def update_status(booking_id, new_status):
     if not session.get('admin_logged_in'):
-        return redirect(url_for('login'))
+        return redirect(url_for('admin_login'))
     if bookings_collection is None: return "Database Connection Error", 500
     bookings_collection.update_one({'_id': ObjectId(booking_id)}, {'$set': {'status': new_status}})
     return redirect(url_for('admin_page'))
