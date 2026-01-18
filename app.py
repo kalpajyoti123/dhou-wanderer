@@ -147,6 +147,22 @@ def trip_details(trip_name):
             
     return render_template('details.html', trip=trip_data, reviews=reviews, avg_rating=round(avg_rating, 1), review_count=review_count, page=page, total_pages=total_pages, sort_option=sort_option)
 
+@app.route('/submit-review', methods=['POST'])
+def submit_review():
+    if reviews_collection is None: return "Database Connection Error", 500
+    
+    trip_name = request.form.get('trip_name')
+    rating = request.form.get('rating')
+    comment = request.form.get('comment')
+    user_name = request.form.get('user_name') or "Traveler"
+    
+    if rating:
+        reviews_collection.insert_one({
+            "trip_name": trip_name, "user_name": user_name, "rating": int(rating), "comment": comment, "date": datetime.datetime.now().strftime("%Y-%m-%d")
+        })
+        
+    return redirect(url_for('trip_details', trip_name=trip_name.lower().replace(' ', '-')))
+
 @app.route('/book', methods=['POST'])
 def book_trip():
     if bookings_collection is None: return "Database Connection Error", 500
@@ -319,6 +335,12 @@ def add_new_trip():
     
     if trips_collection is None: return "Database Connection Error", 500
 
+    # VALIDATION: Ensure Trip Name is present
+    name = request.form.get('name')
+    if not name:
+        flash("Trip Name is required")
+        return redirect(url_for('admin_page'))
+
     # Applying Form Config: enctype allows 'image_file' to be sent as a file object
     file = request.files.get('image_file')
     filename = "https://via.placeholder.com/400x300?text=No+Image"
@@ -332,11 +354,13 @@ def add_new_trip():
             return redirect(url_for('admin_page'))
 
     trip_doc = {
-        "name": request.form.get('name'),
+        "name": name,
+        "description": request.form.get('description'),
         "price": request.form.get('price'),
         "image": filename,
         "spots": request.form.get('spots')
     }
+
     trips_collection.insert_one(trip_doc)
     return redirect(url_for('admin_page'))
 
@@ -353,8 +377,14 @@ def edit_trip(trip_id):
         return "Invalid Trip ID", 400
 
     if request.method == 'POST':
+        name = request.form.get('name')
+        if not name:
+            flash("Trip Name is required")
+            return redirect(url_for('edit_trip', trip_id=trip_id))
+
         update_data = {
-            "name": request.form.get('name'),
+            "name": name,
+            "description": request.form.get('description'),
             "price": request.form.get('price'),
             "spots": request.form.get('spots')
         }
@@ -375,6 +405,8 @@ def edit_trip(trip_id):
         
         for index in day_indices:
             day_title = request.form.get(f'day_title_{index}')
+            if not day_title: continue # Skip empty days
+
             day_desc = request.form.get(f'day_desc_{index}')
             existing_day_img = request.form.get(f'existing_day_img_{index}')
             

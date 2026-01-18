@@ -49,6 +49,7 @@
             <form class="cms-form" action="/admin/add-trip" method="POST" enctype="multipart/form-data">
                 <input type="text" name="name" placeholder="Trip Name" required>
                 <input type="number" name="price" placeholder="Price (INR)" required>
+                <textarea name="description" placeholder="Trip Description (e.g. A 6-Day journey...)" rows="3" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:8px; font-family:inherit; font-size:14px; grid-column: 1 / -1;"></textarea>
                 
                 <div style="display:flex; flex-direction:column; gap:5px;">
                     <label style="font-size:12px; color:#888;">Trip Image:</label>

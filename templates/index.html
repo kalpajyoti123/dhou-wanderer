@@ -73,14 +73,18 @@
         .section-title h2 { font-size: 36px; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
 
         /* --- DESTINATIONS --- */
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 40px; }
-        .card { background: var(--light); border-radius: 20px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.05); transition: 0.3s; position: relative; border: 1px solid #eee; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 360px)); justify-content: center; gap: 30px; }
+        .card { background: #000; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.1); transition: 0.3s; position: relative; border: 0 !important; padding: 0 !important; height: 450px; }
         .card:hover { transform: translateY(-10px); }
+        .card:hover .img-box img { transform: scale(1.1); }
+        .card::after { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to top, rgba(0,0,0,0.8), transparent); opacity: 0; transition: 0.3s; z-index: 0; pointer-events: none; }
+        .card:hover::after { opacity: 1; }
         .urgency-badge { position: absolute; top: 20px; left: 20px; background: rgba(255,255,255,0.95); padding: 6px 12px; border-radius: 50px; font-size: 11px; font-weight: 800; color: var(--primary); z-index: 5; }
-        .img-box { height: 320px; overflow: hidden; position: relative; }
-        .img-box img { width: 100%; height: 100%; object-fit: cover; transition: 0.6s; }
-        .card-body { padding: 30px; }
-        .btn-modern { display: inline-block; background: var(--primary); color: white; padding: 14px 28px; text-decoration: none; border-radius: 10px; font-weight: bold; transition: 0.3s; border: none; cursor: pointer; }
+        .img-box { height: 100%; width: 100%; position: absolute; top: 0; left: 0; z-index: 0; }
+        .img-box img { width: 100%; height: 100%; object-fit: cover; transition: 0.6s; display: block; }
+        .card-body { position: absolute; bottom: 0; left: 0; width: 100%; padding: 20px; background: linear-gradient(to top, rgba(0,0,0,0.9), transparent); z-index: 1; box-sizing: border-box; }
+        .btn-modern { display: inline-block; background: rgba(255,255,255,0.2); color: white; padding: 6px 14px; text-decoration: none; border-radius: 50px; font-weight: 600; transition: 0.3s; border: 1px solid rgba(255,255,255,0.4); cursor: pointer; font-size: 11px; backdrop-filter: blur(5px); }
+        .btn-modern:hover { background: white; color: var(--dark); border-color: white; }
         
         /* Search Bar */
         .search-container { text-align: center; margin-bottom: 40px; }
@@ -195,9 +199,9 @@
             body { background: var(--bg-body); color: var(--text-main); }
             header.scrolled { background: rgba(30, 30, 30, 0.95); }
             header.scrolled .hamburger span { background: #fff; }
-            .card { border-color: #333; }
-            .card-body h3 { color: var(--text-main); }
-            .card-body p { color: #ccc; }
+            .card { border: 0 !important; }
+            .card-body h3 { color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+            .card-body p { color: #eee; text-shadow: 0 1px 2px rgba(0,0,0,0.5); }
             /* Overriding inline styles for About section */
             #about { background: var(--bg-body) !important; }
             #about h2 { color: var(--text-main) !important; }
@@ -261,7 +265,7 @@
             <div class="card reveal-up">
                 <div class="urgency-badge">🔥 ONLY {{ trip.spots }} SPOTS LEFT</div>
                 <div class="img-box">
-                    <img src="{{ trip.image if 'http' in trip.image else '/static/wp-content/uploads/2021/01/' + trip.image }}" onerror="this.src='https://via.placeholder.com/400x300?text=Image+Not+Found'" alt="{{ trip.name }}">
+                    <img src="{{ trip.image if trip.image and 'http' in trip.image else '/static/wp-content/uploads/2021/01/' + (trip.image if trip.image else 'default.jpg') }}" onerror="this.src='https://via.placeholder.com/400x300?text=Image+Not+Found'" alt="{{ trip.name }}">
                 </div>
                 <div class="card-body">
                     <h3>{{ trip.name }}</h3>
