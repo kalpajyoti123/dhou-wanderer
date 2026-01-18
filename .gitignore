@@ -1,7 +1,9 @@
-.env
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+.env
+venv/
+.vscode/
 .DS_Store
-node_modules/
-package.json
-package-lock.json
+static/wp-content/uploads/
+*.pdf

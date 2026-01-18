@@ -16,6 +16,10 @@ import razorpay
 import cloudinary
 import cloudinary.uploader
 import cloudinary.api
+import io
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
 
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'), override=True)
 
@@ -32,7 +36,10 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'mp4'}
 
 # Apply Folder Permissions: Automatically creates the directory path if it doesn't exist
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+try:
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+except OSError:
+    print("⚠️ Warning: Could not create upload folder. (Likely read-only filesystem on Vercel)")
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -241,6 +248,81 @@ def payment_page():
                            user_email=booking.get('email'),
                            user_name=booking.get('name'))
 
+def create_invoice(booking, price, payment_id):
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+    
+    # Define Colors
+    primary_color = colors.HexColor("#28a745")
+    text_color = colors.HexColor("#333333")
+    light_gray = colors.HexColor("#f4f4f4")
+    
+    # --- Header Section ---
+    # Logo: Try to load from static folder, fallback to text
+    logo_path = os.path.join(app.root_path, 'static', 'img', 'logo.png')
+    if os.path.exists(logo_path):
+        c.drawImage(logo_path, 50, height - 100, width=120, height=50, preserveAspectRatio=True, mask='auto')
+    else:
+        c.setFont("Helvetica-Bold", 24)
+        c.setFillColor(primary_color)
+        c.drawString(50, height - 80, "Wanderer")
+
+    # Invoice Details (Top Right)
+    c.setFillColor(text_color)
+    c.setFont("Helvetica-Bold", 20)
+    c.drawRightString(width - 50, height - 70, "INVOICE")
+    
+    c.setFont("Helvetica", 10)
+    c.drawRightString(width - 50, height - 90, f"Date: {datetime.datetime.now().strftime('%Y-%m-%d')}")
+    c.drawRightString(width - 50, height - 105, f"ID: {payment_id}")
+    
+    c.setStrokeColor(colors.lightgrey)
+    c.line(50, height - 120, width - 50, height - 120)
+    
+    # --- Bill To Section ---
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(50, height - 150, "Billed To:")
+    
+    c.setFont("Helvetica", 12)
+    c.drawString(50, height - 170, booking.get('name', 'Traveler'))
+    c.drawString(50, height - 190, booking.get('email', ''))
+    
+    # --- Table Header ---
+    y = height - 240
+    c.setFillColor(light_gray)
+    c.rect(50, y, width - 100, 30, fill=1, stroke=0)
+    
+    c.setFillColor(text_color)
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(60, y + 10, "DESCRIPTION")
+    c.drawRightString(width - 60, y + 10, "AMOUNT")
+    
+    # --- Table Content ---
+    y -= 30
+    c.setFont("Helvetica", 10)
+    c.drawString(60, y + 10, f"Trip Package: {booking.get('trip')}")
+    c.drawRightString(width - 60, y + 10, f"INR {price:,.2f}")
+    
+    c.setStrokeColor(colors.lightgrey)
+    c.line(50, y, width - 50, y)
+    
+    # --- Total ---
+    y -= 40
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(width - 200, y, "Total:")
+    c.setFillColor(primary_color)
+    c.drawString(width - 60, y, f"INR {price:,.2f}")
+    
+    # --- Footer ---
+    c.setFillColor(text_color)
+    c.setFont("Helvetica-Oblique", 10)
+    c.drawCentredString(width / 2, 50, "Thank you for traveling with Wanderer!")
+    
+    c.save()
+    buffer.seek(0)
+    return buffer
+
 @app.route('/payment/verify', methods=['POST'])
 def payment_verify():
     # Get payment details from form
@@ -266,16 +348,25 @@ def payment_verify():
                 
                 # Send Receipt Email
                 try:
-                    msg = Message(f"Payment Receipt: {booking['trip']}", recipients=[booking['email']])
-                    msg.html = render_template('emails/payment_receipt.html', name=booking['name'], trip=booking['trip'], payment_id=payment_id, date=datetime.datetime.now().strftime("%d %b, %Y"))
+                    msg = Message(f"Booking Successful: {booking['trip']}", recipients=[booking['email']])
+                    msg.html = render_template('emails/booking_success_email.html', name=booking['name'], trip=booking['trip'], payment_id=payment_id, date=datetime.datetime.now().strftime("%d %b, %Y"))
+                    
+                    # Generate and Attach Invoice
+                    trip_data = trips_collection.find_one({"name": booking['trip']})
+                    price = trip_data.get('price', '0') if trip_data else '0'
+                    pdf = create_invoice(booking, price, payment_id)
+                    msg.attach("Invoice.pdf", "application/pdf", pdf.read())
+                    
                     mail.send(msg)
                     print(f"✅ Receipt Email sent to {booking['email']}")
                 except Exception as e:
                     print(f"❌ Error sending receipt email: {e}")
+                
+                return render_template('booking_success.html', booking=booking)
             else:
                 print(f"❌ Error: Booking not found for Order ID {order_id}")
 
-        return render_template('index.html', trips=list(trips_collection.find())) # Redirect to home or success page
+        return redirect(url_for('home'))
     except razorpay.errors.SignatureVerificationError:
         return "Payment Verification Failed", 400
 
