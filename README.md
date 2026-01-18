@@ -90,7 +90,10 @@ If you see a database connection error after deployment:
 If your images (logo, backgrounds) appear broken on Vercel, they might still be stored as "LFS Pointers" (tiny text files) instead of actual images.
 To fix this, run these commands in your terminal:
 ```bash
-git add --renormalize .
-git commit -m "Fix: Convert LFS images back to regular files"
+git lfs uninstall
+rm .gitattributes
+git rm -r --cached static
+git add static
+git commit -m "Fix: Force re-add static images to remove LFS"
 git push origin main
 ```

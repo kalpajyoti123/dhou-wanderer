@@ -5,5 +5,5 @@ __pycache__/
 venv/
 .vscode/
 .DS_Store
-static/wp-content/uploads/
+# static/wp-content/uploads/
 *.pdf

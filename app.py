@@ -31,7 +31,7 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 # --- 1. FOLDER PERMISSIONS & CONFIGURATION ---
 # This path matches the subfolders you requested
-UPLOAD_FOLDER = 'static/wp-content/uploads/2021/01/'
+UPLOAD_FOLDER = os.path.join(app.root_path, 'static', 'wp-content', 'uploads', '2021', '01')
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'mp4'}
 
@@ -262,12 +262,18 @@ def create_invoice(booking, price, payment_id):
     # Logo: Try to load from static folder, fallback to text
     logo_path = os.path.join(app.root_path, 'static', 'img', 'logo.png')
     logo_drawn = False
+    
+    # Debugging for Vercel Logs
     if os.path.exists(logo_path):
+        print(f"✅ Logo found at: {logo_path}, Size: {os.path.getsize(logo_path)} bytes")
         try:
             c.drawImage(logo_path, 50, height - 100, width=120, height=50, preserveAspectRatio=True, mask='auto')
             logo_drawn = True
-        except Exception:
+        except Exception as e:
+            print(f"❌ Error drawing logo: {e}")
             pass
+    else:
+        print(f"❌ Logo NOT found at: {logo_path}")
 
     if not logo_drawn:
         c.setFont("Helvetica-Bold", 24)
@@ -346,7 +352,7 @@ def payment_verify():
         # Verify signature
         razorpay_client.utility.verify_payment_signature(params_dict)
         
-        if bookings_collection:
+        if bookings_collection is not None:
             booking = bookings_collection.find_one({'razorpay_order_id': order_id})
             if booking:
                 print(f"✅ Payment Verified. Updating Booking {booking['_id']} to Paid/Confirmed.")
@@ -556,5 +562,43 @@ def update_status(booking_id, new_status):
     bookings_collection.update_one({'_id': ObjectId(booking_id)}, {'$set': {'status': new_status}})
     return redirect(url_for('admin_page'))
 
+# --- DEBUG ROUTE (Use this to check files on Vercel) ---
+@app.route('/debug-files')
+def debug_files():
+    output = ["<h1>File System Debug</h1>"]
+    
+    cwd = os.getcwd()
+    output.append(f"<strong>Current Working Directory:</strong> {cwd}")
+    output.append(f"<strong>App Root Path:</strong> {app.root_path}")
+    
+    # 1. Check static/img folder (Where logo usually is)
+    img_path = os.path.join(app.root_path, 'static', 'img')
+    output.append(f"<h3>Checking {img_path}</h3>")
+    
+    if os.path.exists(img_path):
+        output.append("✅ static/img folder exists.")
+        files = os.listdir(img_path)
+        for f in files:
+            f_path = os.path.join(img_path, f)
+            size = os.path.getsize(f_path)
+            output.append(f" - {f}: {size} bytes")
+            if size < 200:
+                output.append(f"   ❌ <strong>CRITICAL ERROR:</strong> {f} is only {size} bytes. This is a Git LFS pointer, not an image. You MUST run the git fix commands.")
+            else:
+                output.append(f"   ✅ {f} looks like a valid image file.")
+    else:
+        output.append("❌ static/img folder NOT found.")
+
+    # 2. Check Uploads folder (Where 'other' images might be)
+    upload_path = os.path.join(app.root_path, 'static', 'wp-content', 'uploads', '2021', '01')
+    output.append(f"<h3>Checking {upload_path}</h3>")
+    
+    if os.path.exists(upload_path):
+        output.append(f"✅ Folder exists. Files: {os.listdir(upload_path)}")
+    else:
+        output.append("❌ Folder NOT found. (This is expected if .gitignore blocks it)")
+
+    return "<br>".join(output)
+
 if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0')
+    app.run(debug=True, host='0.0.0.0')
