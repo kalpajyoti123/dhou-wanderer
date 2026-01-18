@@ -262,6 +262,10 @@ def create_invoice(booking, price, payment_id):
     # Logo: Try to load from static folder, fallback to text
     logo_path = os.path.join(app.root_path, 'static', 'img', 'logo.png')
     logo_drawn = False
+
+    # Fallback: If app.root_path fails, try current working directory
+    if not os.path.exists(logo_path):
+        logo_path = os.path.join(os.getcwd(), 'static', 'img', 'logo.png')
     
     # Debugging for Vercel Logs
     if os.path.exists(logo_path):
