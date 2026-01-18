@@ -2,32 +2,18 @@
 <html>
 <head>
     <style>
-        .wrapper { background-color: #f8f8f8; padding: 40px; font-family: 'Segoe UI', sans-serif; }
-        .content { max-width: 600px; background: #ffffff; margin: 0 auto; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.05); }
-        .header { background: #1a1a1a; padding: 30px; text-align: center; }
-        .body { padding: 40px; color: #333333; line-height: 1.6; }
-        .footer { padding: 20px; text-align: center; font-size: 12px; color: #999999; }
-        .button { display: inline-block; background: #F56A6A; color: #ffffff !important; padding: 15px 30px; text-decoration: none; border-radius: 10px; font-weight: bold; margin-top: 20px; }
-        h1 { color: #F56A6A; margin: 0; }
+        body { font-family: Arial, sans-serif; color: #333; line-height: 1.6; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px; }
+        h2 { color: #F56A6A; }
     </style>
 </head>
 <body>
-    <div class="wrapper">
-        <div class="content">
-            <div class="header">
-                <img src="https://yourdomain.com/static/wp-content/uploads/2021/01/966b96df-logo.png" height="40" alt="Wanderer Logo">
-            </div>
-            <div class="body">
-                <h1>Adventure Awaits, {{ name }}!</h1>
-                <p>Thank you for choosing <strong>Wanderer</strong>. We have received your booking request for the <strong>{{ trip }}</strong> expedition.</p>
-                <p>Our team of experts is currently reviewing your request. We'll reach out to you within 24 hours to discuss the final details and answer any questions you might have.</p>
-                <a href="https://instagram.com/awand.erer" class="button">Follow Our Journeys</a>
-                <p>Stay wild,<br>The Wanderer Team</p>
-            </div>
-            <div class="footer">
-                © 2025 Wanderer Travel | Dibrugarh, Assam, India
-            </div>
-        </div>
+    <div class="container">
+        <h2>Booking Confirmation</h2>
+        <p>Hi {{ name }},</p>
+        <p>Thank you for booking your trip to <strong>{{ trip }}</strong> with Wanderer Travels.</p>
+        <p>We have received your booking request. Please proceed to payment to confirm your spot.</p>
+        <p>Safe Travels,<br>The Wanderer Team</p>
     </div>
 </body>
 </html>

@@ -66,13 +66,19 @@ except Exception as e:
     print(f"❌ MongoDB Connection Error: {e}")
 
 # --- 3. EMAIL CONFIGURATION ---
+mail_username = os.environ.get('MAIL_USERNAME')
+mail_password = os.environ.get('MAIL_PASS')
+
+if not mail_username or not mail_password:
+    print("\n❌ CONFIG ERROR: Email credentials (MAIL_USERNAME or MAIL_PASS) are missing.\n   Emails will NOT be sent. Check your .env file.\n")
+
 app.config.update(
     MAIL_SERVER='smtp.gmail.com',
     MAIL_PORT=587,
     MAIL_USE_TLS=True,
-    MAIL_USERNAME=os.environ.get('MAIL_USERNAME'),
-    MAIL_PASSWORD=os.environ.get('MAIL_PASS'),
-    MAIL_DEFAULT_SENDER=('Wanderer Travels', os.environ.get('MAIL_USERNAME'))
+    MAIL_USERNAME=mail_username,
+    MAIL_PASSWORD=mail_password,
+    MAIL_DEFAULT_SENDER=('Wanderer Travels', mail_username) if mail_username else None
 )
 mail = Mail(app)
 
@@ -188,8 +194,9 @@ def book_trip():
             msg = Message(f"Booking Received: {destination}", recipients=[user_email])
             msg.html = render_template('emails/booking_confirmation.html', name=user_name, trip=destination)
             mail.send(msg)
+            print(f"✅ Booking Email sent to {user_email}")
         except Exception as email_error:
-            print(f"Warning: Email sending failed: {email_error}")
+            print(f"❌ Email sending failed: {email_error}")
 
         return redirect(url_for('payment_page', booking_id=booking_id))
     except Exception as e:
@@ -262,8 +269,9 @@ def payment_verify():
                     msg = Message(f"Payment Receipt: {booking['trip']}", recipients=[booking['email']])
                     msg.html = render_template('emails/payment_receipt.html', name=booking['name'], trip=booking['trip'], payment_id=payment_id, date=datetime.datetime.now().strftime("%d %b, %Y"))
                     mail.send(msg)
+                    print(f"✅ Receipt Email sent to {booking['email']}")
                 except Exception as e:
-                    print(f"Error sending receipt email: {e}")
+                    print(f"❌ Error sending receipt email: {e}")
             else:
                 print(f"❌ Error: Booking not found for Order ID {order_id}")
 

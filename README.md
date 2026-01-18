@@ -40,7 +40,7 @@ A full-stack Flask application for a travel agency, featuring trip bookings, pay
    SECRET_KEY=your_secret_key
    MONGO_URI=your_mongodb_connection_string
    MAIL_USERNAME=your_email@gmail.com
-   MAIL_PASS=your_app_password
+   MAIL_PASS=your_16_char_app_password  # Generate this in Google Account > Security > App Passwords
    RAZORPAY_KEY_ID=your_razorpay_key
    RAZORPAY_KEY_SECRET=your_razorpay_secret
    ADMIN_PASSWORD=your_admin_password
