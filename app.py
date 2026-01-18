@@ -261,9 +261,15 @@ def create_invoice(booking, price, payment_id):
     # --- Header Section ---
     # Logo: Try to load from static folder, fallback to text
     logo_path = os.path.join(app.root_path, 'static', 'img', 'logo.png')
+    logo_drawn = False
     if os.path.exists(logo_path):
-        c.drawImage(logo_path, 50, height - 100, width=120, height=50, preserveAspectRatio=True, mask='auto')
-    else:
+        try:
+            c.drawImage(logo_path, 50, height - 100, width=120, height=50, preserveAspectRatio=True, mask='auto')
+            logo_drawn = True
+        except Exception:
+            pass
+
+    if not logo_drawn:
         c.setFont("Helvetica-Bold", 24)
         c.setFillColor(primary_color)
         c.drawString(50, height - 80, "Wanderer")
